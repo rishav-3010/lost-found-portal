@@ -18,10 +18,11 @@ const NavBar = () => {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
-    await fetch('http://localhost:5000/api/auth/logout', {
-      method: 'POST',
-      credentials: 'include'
-    });
+    await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/auth/logout`, {
+  method: 'POST',
+  credentials: 'include'
+});
+
     setUser(null);
     navigate('/login');
   };
@@ -94,9 +95,10 @@ const AppWithAuth = () => {
 useEffect(() => {
   const fetchUser = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/auth/me', {
-        credentials: 'include'
-      });
+      const res = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/auth/me`, {
+  credentials: 'include'
+});
+
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);

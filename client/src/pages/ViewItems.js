@@ -13,7 +13,10 @@ const ViewItems = () => {
   useEffect(() => {
     const fetchItems = async () => {
       try {
-        const res = await axios.get('http://localhost:5000/api/items');
+        const res = await axios.get(`${process.env.REACT_APP_API_BASE_URL}/api/items`, {
+  withCredentials: true, // if needed (for session login)
+});
+
         setItems(res.data);
       } catch (err) {
         console.error('Error fetching items:', err);
