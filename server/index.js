@@ -15,8 +15,8 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID); // Add this
 
 // Enhanced CORS configuration
 app.use(cors({
-  origin: 'http://localhost:3000', // Your React app's URL
-  credentials: true
+  origin: ["http://localhost:3000", "https://lost-found-portal-alpha.vercel.app"],
+  credentials: true,
 }));
 
 // Middleware
