@@ -42,16 +42,18 @@ app.post('/api/auth/google', async (req, res) => {
     const payload = ticket.getPayload();
 
     // Set secure cookie
-    res.cookie('session', JSON.stringify({
-      email: payload.email,
-      name: payload.name,
-      picture: payload.picture
-    }), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', // Use HTTPS in production
-      sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 1000
-    });
+    // Change sameSite from 'lax' to 'none' and force secure
+res.cookie('session', JSON.stringify({
+  email: payload.email,
+  name: payload.name,
+  picture: payload.picture
+}), {
+  httpOnly: true,
+  secure: true,          // Always true for production (Render is HTTPS)
+  sameSite: 'none',      // <- Crucial for Vercel ↔ Render cookie
+  maxAge: 24 * 60 * 60 * 1000
+});
+
 
     res.json({ success: true, user: payload });
   } catch (err) {
