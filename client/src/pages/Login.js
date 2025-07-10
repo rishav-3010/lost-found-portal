@@ -15,12 +15,13 @@ const Login = () => {
 
   const handleGoogleLogin = async (credentialResponse) => {
     try {
-      const res = await fetch('http://localhost:5000/api/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include', // <--- crucial for sending/receiving cookies
-        body: JSON.stringify({ credential: credentialResponse.credential }),
-      });
+      const res = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/auth/google`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  credentials: 'include',
+  body: JSON.stringify({ credential: credentialResponse.credential }),
+});
+
       if (!res.ok) throw new Error('Login failed');
       const data = await res.json();
       setUser(data.user); // Store user info in context (not localStorage!)
