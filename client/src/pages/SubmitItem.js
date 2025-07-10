@@ -58,7 +58,10 @@ const SubmitItem = () => {
 
     try {
       setLoading(true);
-      await axios.post('http://localhost:5000/api/items', data);
+      await axios.post(`${process.env.REACT_APP_API_BASE_URL}/api/items`, data, {
+  withCredentials: true, // Only if your backend uses cookies/sessions
+});
+
       setSuccessMsg('Item submitted successfully!');
       setFormData({
         title: '',
