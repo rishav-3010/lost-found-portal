@@ -58,6 +58,9 @@ app.post('/api/auth/google', async (req, res) => {
     res.status(401).json({ error: 'Invalid token' });
   }
 });
+app.get("/", (req, res) => {
+  res.send("Lost & Found API is live 🚀");
+});
 
 app.get('/api/auth/me', (req, res) => {
   try {
