@@ -1,0 +1,61 @@
+/* Full page center alignment */
+.login-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: linear-gradient(135deg, #89f7fe, #66a6ff);
+  font-family: 'Poppins', sans-serif;
+}
+
+/* Glassmorphic login card */
+.login-card {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(12px);
+  border-radius: 16px;
+  padding: 40px 30px;
+  text-align: center;
+  width: 320px;
+  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.2);
+  animation: fadeInUp 0.8s ease-out;
+}
+
+/* Title */
+.login-title {
+  font-size: 1.8rem;
+  background: linear-gradient(90deg, #0072ff, #00c6ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+/* Subtitle */
+.login-subtitle {
+  color: #f0f0f0;
+  font-size: 0.95rem;
+  margin-bottom: 20px;
+}
+
+/* Google login wrapper hover effect */
+.google-login-wrapper {
+  display: inline-block;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.google-login-wrapper:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 114, 255, 0.3);
+}
+
+/* Fade-in animation */
+@keyframes fadeInUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

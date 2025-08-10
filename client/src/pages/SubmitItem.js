@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useUser } from '../UserContext';
+import { FaTimes, FaUpload, FaSpinner, FaCheckCircle } from 'react-icons/fa';
 
 const SubmitItem = () => {
   const { user } = useUser();
+  const fileInputRef = useRef(null);
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -13,54 +16,126 @@ const SubmitItem = () => {
     contactPhone: '',
     hostelAddress: '',
   });
-  const [image, setImage] = useState(null);
-  const [successMsg, setSuccessMsg] = useState('');
-  const [loading, setLoading] = useState(false);
 
+  const [image, setImage] = useState(null);      // File
+  const [preview, setPreview] = useState(null);  // Object URL
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
+
+  // Autofill email from logged-in user
   useEffect(() => {
     if (user?.email) {
       setFormData(prev => ({ ...prev, contactEmail: user.email }));
     }
   }, [user]);
 
+  // Revoke object URL when preview changes / component unmounts
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
+
+  // Auto-dismiss success message
+  useEffect(() => {
+    if (!successMsg) return;
+    const t = setTimeout(() => setSuccessMsg(''), 3000);
+    return () => clearTimeout(t);
+  }, [successMsg]);
+
+  /* ---------- Validation ---------- */
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const phoneRegex = /^[0-9]{10}$/;
+
+  const validateField = (name, value) => {
+    let msg = '';
+    if (['title', 'description', 'location', 'contactEmail'].includes(name)) {
+      if (!value || value.toString().trim() === '') msg = 'This field is required';
+    }
+    if (name === 'contactEmail' && value) {
+      if (!emailRegex.test(value)) msg = 'Enter a valid email';
+    }
+    if (name === 'contactPhone' && value) {
+      if (!phoneRegex.test(value)) msg = 'Enter 10-digit phone or leave blank';
+    }
+    setErrors(prev => ({ ...prev, [name]: msg }));
+    return !msg;
+  };
+
+  const validateAll = () => {
+    const toValidate = ['title', 'description', 'location', 'contactEmail', 'contactPhone'];
+    let ok = true;
+    toValidate.forEach(name => {
+      const valid = validateField(name, formData[name]);
+      if (!valid) ok = false;
+    });
+    if (!image) {
+      setErrors(prev => ({ ...prev, image: 'Image is required' }));
+      ok = false;
+    }
+    return ok;
+  };
+
+  /* ---------- Handlers ---------- */
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    validateField(name, value);
   };
 
-  const handleImageChange = (e) => {
-    setImage(e.target.files[0]);
+  const handleTypeToggle = (t) => {
+    setFormData(prev => ({ ...prev, type: t }));
   };
 
-  const validateForm = () => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const phoneRegex = /^[0-9]{10}$/;
+  const handleImageFile = (file) => {
+    if (!file) return;
+    // revoke previous preview
+    if (preview) URL.revokeObjectURL(preview);
+    const url = URL.createObjectURL(file);
+    setImage(file);
+    setPreview(url);
+    // clear image error if any
+    setErrors(prev => ({ ...prev, image: '' }));
+  };
 
-    if (!emailRegex.test(formData.contactEmail)) {
-      alert("Please enter a valid email address.");
-      return false;
+  const handleImageChange = (file) => {
+    if (file && file.type && file.type.startsWith('image')) {
+      handleImageFile(file);
+    } else {
+      setErrors(prev => ({ ...prev, image: 'Please upload a valid image file' }));
     }
+  };
 
-    if (formData.contactPhone && !phoneRegex.test(formData.contactPhone)) {
-      alert("Please enter a valid 10-digit phone number or leave it blank.");
-      return false;
+  const handleDrop = (e) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleImageChange(e.dataTransfer.files[0]);
     }
+  };
 
-    return true;
+  const removeImage = (ev) => {
+    ev?.stopPropagation?.();
+    if (preview) URL.revokeObjectURL(preview);
+    setPreview(null);
+    setImage(null);
+    setErrors(prev => ({ ...prev, image: 'Image is required' }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    if (!validateAll()) return;
 
-    const data = new FormData();
-    Object.entries(formData).forEach(([key, value]) => data.append(key, value));
-    if (image) data.append('image', image);
+    const payload = new FormData();
+    Object.entries(formData).forEach(([k, v]) => payload.append(k, v));
+    payload.append('image', image);
 
     try {
       setLoading(true);
-      await axios.post(`${process.env.REACT_APP_API_BASE_URL}/api/items`, data, {
-  withCredentials: true, // Only if your backend uses cookies/sessions
-});
+      await axios.post(`${process.env.REACT_APP_API_BASE_URL}/api/items`, payload, {
+        withCredentials: true,
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
 
       setSuccessMsg('Item submitted successfully!');
       setFormData({
@@ -68,106 +143,319 @@ const SubmitItem = () => {
         description: '',
         type: 'lost',
         location: '',
-        contactEmail: user.email,
+        contactEmail: user?.email ?? '',
         contactPhone: '',
         hostelAddress: '',
       });
-      setImage(null);
+      removeImage();
+      setErrors({});
     } catch (err) {
-      console.error('Error submitting item:', err);
-      alert('Something went wrong!');
+      console.error('Submit error:', err);
+      // Show a helpful error
+      setErrors(prev => ({ ...prev, submit: 'Failed to submit. Try again.' }));
+      alert('Something went wrong while submitting. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  /* ---------- Render ---------- */
   return (
-    <div className="submit-form">
+    <div className="submit-wrap">
+      {successMsg && (
+        <div className="success-toast" role="status" aria-live="polite">
+          <FaCheckCircle /> <span>{successMsg}</span>
+        </div>
+      )}
+
+      <form className="submit-form" onSubmit={handleSubmit} encType="multipart/form-data" noValidate>
+        <h2 className="form-title">Submit Lost or Found Item</h2>
+
+        <div className="grid">
+          <div className="col main-col">
+            <label className="label">Item Title <span className="req">*</span></label>
+            <input name="title" value={formData.title} onChange={handleChange} placeholder="Item title" />
+            {errors.title && <div className="error">{errors.title}</div>}
+
+            <label className="label">Description <span className="req">*</span></label>
+            <textarea name="description" value={formData.description} onChange={handleChange} placeholder="Describe the item" />
+
+            {errors.description && <div className="error">{errors.description}</div>}
+
+            <label className="label">Where it was lost/found <span className="req">*</span></label>
+            <input name="location" value={formData.location} onChange={handleChange} placeholder="Location (campus, building, etc.)" />
+            {errors.location && <div className="error">{errors.location}</div>}
+          </div>
+
+          <aside className="col side-col">
+            <label className="label">Type</label>
+            <div className="toggle-group" role="tablist" aria-label="Type selector">
+              {['lost', 'found'].map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  className={`toggle ${formData.type === t ? 'active' : ''}`}
+                  onClick={() => handleTypeToggle(t)}
+                  aria-pressed={formData.type === t}
+                >
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </button>
+              ))}
+            </div>
+
+            <label className="label">Your Email <span className="req">*</span></label>
+            <input name="contactEmail" value={formData.contactEmail} onChange={handleChange} disabled />
+
+            {errors.contactEmail && <div className="error">{errors.contactEmail}</div>}
+
+            <label className="label">Phone No (optional)</label>
+            <input name="contactPhone" value={formData.contactPhone} onChange={handleChange} placeholder="10-digit number" />
+            {errors.contactPhone && <div className="error">{errors.contactPhone}</div>}
+
+            <label className="label">Hostel Address (optional)</label>
+            <input name="hostelAddress" value={formData.hostelAddress} onChange={handleChange} placeholder="Hostel / room (optional)" />
+          </aside>
+        </div>
+
+        {/* ------- Upload area (large dashed outer + white inner frame preview) ------- */}
+        <div
+          className="upload-box"
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+          onClick={() => fileInputRef.current?.click()}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter') fileInputRef.current?.click(); }}
+          aria-label="Upload item photo (required)"
+        >
+          {preview ? (
+            <div className="image-frame" onClick={(ev) => ev.stopPropagation()}>
+              <button
+                type="button"
+                className="remove-btn"
+                onClick={removeImage}
+                aria-label="Remove uploaded image"
+              >
+                <FaTimes />
+              </button>
+
+              <div className="image-holder">
+                <img src={preview} alt="Uploaded preview" />
+              </div>
+            </div>
+          ) : (
+            <div className="upload-placeholder">
+              <FaUpload size={22} />
+              <div className="upload-text">
+                <div className="title-strong">Item Photo <span className="req">*</span></div>
+                <div className="sub">Drag & drop or click to upload — required</div>
+              </div>
+            </div>
+          )}
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={(e) => handleImageChange(e.target.files?.[0])}
+            aria-hidden="true"
+          />
+        </div>
+        {errors.image && <div className="error" style={{ marginTop: 8 }}>{errors.image}</div>}
+
+        {errors.submit && <div className="error">{errors.submit}</div>}
+
+        <div style={{ marginTop: 18 }}>
+          <button className="submit-btn" type="submit" disabled={loading}>
+            {loading ? <FaSpinner className="spin" /> : 'Submit Item'}
+          </button>
+        </div>
+      </form>
+
+      {/* ---------- Styles (component-scoped) ---------- */}
       <style>{`
+        :root {
+          --glass-bg: rgba(255,255,255,0.08);
+          --glass-border: rgba(255,255,255,0.12);
+          --accent-1: #00d2ff;
+          --accent-2: #3a7bd5;
+          --text: #fff;
+          --muted: rgba(255,255,255,0.85);
+        }
+
+        .submit-wrap {
+          max-width: 900px;
+          margin: 36px auto;
+          padding: 22px;
+        }
+
         .submit-form {
-          max-width: 500px;
-          margin: 40px auto;
-          background: #fff;
+          background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
           border-radius: 14px;
-          box-shadow: 0 4px 24px rgba(0,0,0,0.08);
-          padding: 32px 24px 24px 24px;
+          padding: 26px;
+          box-shadow: 0 8px 30px rgba(10,10,20,0.18);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(255,255,255,0.06);
+          color: var(--text);
         }
-        .submit-form h2 {
-          margin-bottom: 24px;
-          font-weight: 600;
-          color: #222;
+
+        .form-title {
+          margin: 0 0 12px 0;
+          font-size: 1.35rem;
+          font-weight: 700;
+          color: var(--muted);
         }
-        .submit-form form {
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
+
+        .grid {
+          display: grid;
+          grid-template-columns: 1fr 320px;
+          gap: 18px;
         }
-        .submit-form input[type="text"],
-        .submit-form input[type="email"],
-        .submit-form input[type="tel"],
-        .submit-form input[type="file"],
-        .submit-form textarea,
-        .submit-form select {
+        @media (max-width: 880px) {
+          .grid { grid-template-columns: 1fr; }
+        }
+
+        .col { display: flex; flex-direction: column; gap: 10px; }
+        .main-col { min-width: 0; }
+        .side-col { min-width: 0; }
+
+        .label { font-size: 0.95rem; color: rgba(255,255,255,0.95); margin-top: 6px; font-weight: 600; }
+        .req { color: #ff9aa2; margin-left: 6px; font-weight: 700; }
+        input, textarea {
           padding: 10px 12px;
-          border: 1px solid #ccc;
-          border-radius: 7px;
-          font-size: 1rem;
-          transition: border 0.2s;
-        }
-        .submit-form input:focus,
-        .submit-form textarea:focus,
-        .submit-form select:focus {
-          border: 1.5px solid #1976d2;
-          outline: none;
-        }
-        .submit-form textarea {
-          min-height: 70px;
-          resize: vertical;
-        }
-        .submit-form button[type="submit"] {
-          background: #1976d2;
-          color: #fff;
+          border-radius: 10px;
           border: none;
-          border-radius: 7px;
-          padding: 12px 0;
-          font-size: 1.08rem;
-          font-weight: 600;
+          background: rgba(255,255,255,0.06);
+          color: var(--text);
+          font-size: 0.98rem;
+        }
+        input[disabled] { opacity: 0.7; cursor: not-allowed; }
+        textarea { min-height: 96px; resize: vertical; }
+
+        .error { color: #ff9aa2; font-size: 0.88rem; margin-top: 4px; }
+
+        /* toggle buttons */
+        .toggle-group { display: flex; gap: 8px; margin-top: 6px; }
+        .toggle {
+          padding: 8px 12px;
+          border-radius: 10px;
+          background: rgba(255,255,255,0.04);
+          color: var(--text);
+          border: 1px solid transparent;
           cursor: pointer;
-          margin-top: 8px;
-          transition: background 0.2s;
+          font-weight: 700;
         }
-        .submit-form button[type="submit"]:hover,
-        .submit-form button[type="submit"]:focus {
-          background: #1256a3;
+        .toggle.active {
+          background: linear-gradient(90deg, var(--accent-1), var(--accent-2));
+          color: #061320;
+          border: 1px solid rgba(0,0,0,0.08);
         }
-        .submit-form .success-msg {
-          background: #e7f8ed;
-          color: #197c3a;
-          padding: 10px 14px;
+
+        /* Upload box - dashed outer area */
+        .upload-box {
+          border: 2px dashed rgba(255,255,255,0.35);
+          border-radius: 14px;
+          padding: 18px;
+          min-height: 170px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: background 0.18s, border-color 0.18s;
+          position: relative;
+          margin-top: 12px;
+          background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));
+        }
+        .upload-box:hover { background: rgba(255,255,255,0.02); border-color: rgba(255,255,255,0.55); }
+
+        /* image frame inside dashed area (white card) */
+        .image-frame {
+          width: 100%;
+          max-width: 760px;    /* wide preview like your screenshot */
+          height: 140px;       /* short banner look */
+          background: #fff;
+          border-radius: 10px;
+          overflow: hidden;
+          position: relative;
+          box-shadow: 0 6px 18px rgba(12,12,24,0.12);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 8px;
+        }
+
+        .image-holder {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .image-holder img {
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+          display: block;
           border-radius: 6px;
-          margin-bottom: 10px;
-          font-weight: 500;
-          border: 1px solid #b2e5c5;
+        }
+
+        /* remove button (round black X) */
+        .remove-btn {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          background: rgba(0,0,0,0.78);
+          color: #fff;
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          border: none;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          box-shadow: 0 6px 14px rgba(0,0,0,0.25);
+          z-index: 6;
+        }
+
+        /* placeholder when no image */
+        .upload-placeholder { display:flex; gap:12px; align-items:center; justify-content:center; color:var(--muted); text-align:left; }
+        .upload-text .sub { font-size:0.88rem; opacity:0.9; margin-top:4px; font-weight:600; color:var(--muted); }
+        .title-strong { font-weight:700; color:var(--muted); }
+
+        /* submit button */
+        .submit-btn {
+          width: 100%;
+          max-width: 360px;
+          padding: 12px 18px;
+          border-radius: 12px;
+          border: none;
+          background: linear-gradient(90deg, var(--accent-1), var(--accent-2));
+          color: #061320;
+          font-weight: 800;
+          font-size: 1rem;
+          cursor: pointer;
+          box-shadow: 0 8px 30px rgba(58,123,213,0.18);
+        }
+        .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+        .spin { animation: spin 1s linear infinite; color: #fff; }
+        @keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
+
+        /* success toast */
+        .success-toast {
+          display: inline-flex;
+          gap: 8px;
+          align-items: center;
+          background: rgba(10,200,150,0.08);
+          border-radius: 10px;
+          padding: 8px 12px;
+          color: #b7ffd9;
+          margin-bottom: 14px;
+          border: 1px solid rgba(10,200,150,0.12);
         }
       `}</style>
-      <h2>Submit Lost or Found Item</h2>
-      {successMsg && <div className="success-msg">{successMsg}</div>}
-      <form onSubmit={handleSubmit} encType="multipart/form-data">
-        <input type="text" name="title" placeholder="Item title" value={formData.title} onChange={handleChange} required />
-        <textarea name="description" placeholder="Description" value={formData.description} onChange={handleChange} required />
-        <select name="type" value={formData.type} onChange={handleChange}>
-          <option value="lost">Lost</option>
-          <option value="found">Found</option>
-        </select>
-        <input type="text" name="location" placeholder="Where it was lost/found" value={formData.location} onChange={handleChange} required />
-        <input type="email" name="contactEmail" placeholder="Your Email" value={formData.contactEmail} disabled />
-        <input type="tel" name="contactPhone" placeholder="Phone No (optional)" value={formData.contactPhone} onChange={handleChange} />
-        <input type="text" name="hostelAddress" placeholder="Hostel Address (optional)" value={formData.hostelAddress} onChange={handleChange} />
-        <input type="file" accept="image/*" onChange={handleImageChange} required />
-        <button type="submit" disabled={loading}>
-          {loading ? 'Submitting...' : 'Submit'}
-        </button>
-      </form>
     </div>
   );
 };
